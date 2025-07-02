@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>3D Earth Satellite Tracker - N2YO Proxy</title>
+  <style>
+    body { margin: 0; overflow: hidden; }
+    canvas { display: block; }
+  </style>
+</head>
+<body>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three-globe@2.24.11/dist/three-globe.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.min.js"></script>
+
+<script>
+  const scene = new THREE.Scene();
+  const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+  const renderer = new THREE.WebGLRenderer();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  document.body.appendChild(renderer.domElement);
+
+  const globe = new ThreeGlobe()
+    .globeImageUrl('https://unpkg.com/three-globe@2.24.11/example/img/earth-dark.jpg')
+    .bumpImageUrl('https://unpkg.com/three-globe@2.24.11/example/img/earth-topology.png');
+  scene.add(globe);
+
+  scene.add(new THREE.AmbientLight(0xffffff));
+  const controls = new THREE.OrbitControls(camera, renderer.domElement);
+  camera.position.z = 300;
+
+  function latLonToVec3(lat, lon, radius = 101) {
+    const phi = (90 - lat) * Math.PI / 180;
+    const theta = (lon + 180) * Math.PI / 180;
+    return new THREE.Vector3(
+      -(radius * Math.sin(phi) * Math.cos(theta)),
+      radius * Math.cos(phi),
+      radius * Math.sin(phi) * Math.sin(theta)
+    );
+  }
+
+  const sats = [
+    { id: 25544, name: "ISS", color: 0xff0000 },
+    { id: 43013, name: "Tiangong", color: 0x00ff00 },
+    { id: 20580, name: "Hubble", color: 0x0000ff },
+    { id: 33591, name: "CartoSat-2A", color: 0xffff00 },
+    { id: 44713, name: "Starlink-1001", color: 0x00ffff },
+  ];
+
+  const satObjs = {};
+
+  function createLabel(name) {
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    ctx.font = '24px Arial'; ctx.fillStyle = 'white'; ctx.fillText(name, 0, 24);
+    const spr = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(canvas) }));
+    spr.scale.set(25, 10, 1);
+    return spr;
+  }
+
+  function createTrailDot(pos, color) {
+    const dot = new THREE.Mesh(
+      new THREE.SphereGeometry(0.4, 6, 6),
+      new THREE.MeshBasicMaterial({ color })
+    );
+    dot.position.copy(pos);
+    scene.add(dot);
+  }
+
+  async function fetchSat(sat) {
+    try {
+      const res = await fetch(`/satellite/${sat.id}`); // Proxy endpoint
+      const json = await res.json();
+      if (!json.positions?.length) return;
+      const pos = json.positions[0];
+      const vec = latLonToVec3(pos.satlatitude, pos.satlongitude);
+
+      if (!satObjs[sat.id]) {
+        const mesh = new THREE.Mesh(
+          new THREE.SphereGeometry(1.5, 16, 16),
+          new THREE.MeshBasicMaterial({ color: sat.color })
+        );
+        const label = createLabel(sat.name);
+        scene.add(mesh); scene.add(label);
+        satObjs[sat.id] = { mesh, label, history: [] };
+      }
+
+      const obj = satObjs[sat.id];
+      obj.mesh.position.copy(vec);
+      obj.label.position.copy(vec.clone().add(new THREE.Vector3(5, 5, 5)));
+
+      obj.history.push(vec.clone());
+      if (obj.history.length > 100) obj.history.shift();
+
+      createTrailDot(vec, sat.color);
+    } catch (err) {
+      console.error(`Error fetching data for ${sat.name}`, err);
+    }
+  }
+
+  async function updateAll() {
+    for (const s of sats) {
+      await fetchSat(s);
+    }
+  }
+
+  updateAll();
+  setInterval(updateAll, 5000);
+
+  function animate() {
+    requestAnimationFrame(animate);
+    controls.update();
+    renderer.render(scene, camera);
+  }
+
+  animate();
+
+  window.addEventListener('resize', () => {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+  });
+</script>
+</body>
+</html>
