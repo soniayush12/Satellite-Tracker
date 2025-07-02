@@ -1,5 +1,6 @@
-#🌍 3D Earth Satellite Tracker using Real-Time API Integration
-Duration: June 2025 – Ongoing
+#🌍 3D Earth Satellite Tracker using Real-Time API Integration#
+
+Duration: June 2025
 Tech Stack: HTML, CSS, JavaScript, Three.js, Node.js, Express.js, N2YO API, WebGL
 
 Project Overview:
